@@ -1,0 +1,91 @@
+# nuclear_scattering_simulation
+# Radial Schrodinger Equation Solver using RK4 Method
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Physical constants (in MeV*fm units)
+hbar = 197.327
+m_nucleon = 938.272
+
+def woods_saxon_potential(r, V0=50.0, R=5.0, a=0.65):
+    return -V0 / (1.0 + np.exp((r - R) / a))
+
+def schrodinger_rhs(r, y, l, E, mu, potential_func):
+    u, uprime = y
+    V = potential_func(r)
+    k2 = 2.0 * mu * (E - V) / hbar**2 - l * (l + 1) / r**2
+    return np.array([uprime, -k2 * u])
+
+def rk4_step(f, r, y, h, *args):
+    k1 = f(r, y, *args)
+    k2 = f(r + h/2, y + h*k1/2, *args)
+    k3 = f(r + h/2, y + h*k2/2, *args)
+    k4 = f(r + h, y + h*k3, *args)
+    return y + h*(k1 + 2*k2 + 2*k3 + k4)/6
+
+def solve_schrodinger(E, l, r_min=0.01, r_max=15.0, dr=0.05, V0=50.0, R=5.0, a=0.65):
+    r_vals = np.arange(r_min, r_max, dr)
+    u = np.zeros_like(r_vals)
+    uprime = np.zeros_like(r_vals)
+    u[0] = 0.0
+    uprime[0] = 1e-5
+    mu = m_nucleon / 2.0
+    y = np.array([u[0], uprime[0]])
+
+    for i in range(1, len(r_vals)):
+        y = rk4_step(schrodinger_rhs, r_vals[i-1], y, dr, l, E, mu, lambda r: woods_saxon_potential(r, V0, R, a))
+        u[i], uprime[i] = y
+
+    return r_vals, u
+
+def normalize_wavefunction(r, u):
+    norm = np.trapz(u**2, r)
+    if norm == 0:
+        return u
+    return u / np.sqrt(norm)
+
+def plot_wavefunction(r, u, E, l):
+    plt.figure(figsize=(8,5))
+    plt.plot(r, u, lw=1.5)
+    plt.title(f"Radial Wavefunction | E = {E} MeV, l = {l}")
+    plt.xlabel("r (fm)")
+    plt.ylabel("u(r)")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+def phase_shift_analysis(energies, l=0, R=5.0, a=0.65, V0=50.0):
+    shifts = []
+    for E in energies:
+        r, u = solve_schrodinger(E, l, R=R, a=a, V0=V0)
+        asymptotic = u[-50:]
+        r_tail = r[-50:]
+        k = np.sqrt(2*m_nucleon*E)/hbar
+        phase = np.arctan2(np.sin(k*r_tail[-1]), np.cos(k*r_tail[-1]))
+        shifts.append(np.degrees(phase))
+    return energies, shifts
+
+def plot_phase_shift(energies, shifts, l):
+    plt.figure(figsize=(7,5))
+    plt.plot(energies, shifts, marker='o', lw=1.2)
+    plt.title(f"Phase Shift vs Energy (l = {l})")
+    plt.xlabel("Energy (MeV)")
+    plt.ylabel("Phase Shift (deg)")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+def main():
+    E = 10.0
+    l = 0
+    r, u = solve_schrodinger(E, l)
+    u_norm = normalize_wavefunction(r, u)
+    plot_wavefunction(r, u_norm, E, l)
+
+    energies = np.linspace(5, 30, 6)
+    energies, shifts = phase_shift_analysis(energies, l)
+    plot_phase_shift(energies, shifts, l)
+
+if __name__ == "__main__":
+    main()
